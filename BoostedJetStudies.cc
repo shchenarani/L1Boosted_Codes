@@ -449,7 +449,6 @@ void BoostedJetStudies::analyze( const edm::Event& evt, const edm::EventSetup& e
     }
 
 
-    if(TauCands.size() > 1){  std::sort(TauCands.begin(),TauCands.end(),compareByPt);}
 
     for (size_t j = 0; j < TauCands->size(); j++){
         float pt = TauCands->at(j).pt();
