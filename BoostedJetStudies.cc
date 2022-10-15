@@ -163,11 +163,18 @@ private:
   edm::EDGetTokenT<vector<pat::Tau> > tauSrc_;
   TH1F* nEvents;
   TH1F* Hist_tauVeto;
+  TH1F* Hist_tauVetoEt25;
+  TH1F* Hist_tauVetoEt50;
+  TH1F* Hist_tauVetoEt100;
   TH1F* Hist_pt;
   TH1F* Hist_eta;
   TH1F* Hist_phi;
+  TH1F* Hist_dR;
   TH1F* Hist_regionEta;
   TH1F* Hist_regionPhi;
+  TH1F* Hist_pt_higgs;
+TH1F* Hist_pt_res;
+TH1F* boostedJetpt;
 
 int nevent0=0;
 int nevent1=0;
@@ -347,13 +354,18 @@ BoostedJetStudies::BoostedJetStudies(const edm::ParameterSet& iConfig) :
   recoPt_      = iConfig.getParameter<double>("recoPtCut");
   nEvents      = tfs_->make<TH1F>( "nEvents"  , "nEvents", 2,  0., 1. );
   Hist_tauVeto = tfs_->make<TH1F>("Hist_tauVeto","Hist_tauVeto",10,0,10);
+  Hist_tauVetoEt25 = tfs_->make<TH1F>("Hist_tauVetoEt25","Hist_tauVetoEt25",10,0,10);
+  Hist_tauVetoEt50 = tfs_->make<TH1F>("Hist_tauVetoEt50","Hist_tauVetoEt50",10,0,10);
+  Hist_tauVetoEt100 = tfs_->make<TH1F>("Hist_tauVetoEt100","Hist_tauVetoEt100",10,0,10);
   Hist_pt = tfs_->make<TH1F>("Hist_pt","Hist_pt",20,0,1000);
   Hist_eta = tfs_->make<TH1F>("Hist_eta","Hist_eta",30,-3.0,3.0);
   Hist_phi = tfs_->make<TH1F>("Hist_phi","Hist_phi",40,-4.0,4.0);
+  Hist_dR = tfs_->make<TH1F>("Hist_dR","Hist_dR",40,0,2.0);
   Hist_regionEta = tfs_->make<TH1F>("Hist_regionEta","Hist_regionEta",10,0,10);
   Hist_regionPhi = tfs_->make<TH1F>("Hist_regionPhi","Hist_regionPhi",10,0,10);
-
-
+  Hist_pt_higgs = tfs_->make<TH1F>("Hist_Higgs_pt","Higgs_Hist_pt",20,0,1000);
+  boostedJetpt= tfs_->make<TH1F>("boostedJetpt","boostedJetpt",20,0,1000);
+  Hist_pt_res=tfs_->make<TH1F>("Hist_pt_res","Hist_pt_res",20,-1,1);
 
   efficiencyTree = tfs_->make<TTree>("efficiencyTree", "Gen Matched Jet Tree ");
   createBranches(efficiencyTree);
@@ -454,42 +466,54 @@ double mass= 0;
 ////%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
 //// We start the code from here
-//
-
-//int TauVetoIndex=0;
 double pt_matched=-100;
 double eta_matched=-100;
 double phi_matched=-100;
-std::list<UCTObject*> boostedJetObjs = summaryCard->getBoostedJetObjs();
-for(std::list<UCTObject*>::const_iterator i = boostedJetObjs.begin(); i != boostedJetObjs.end(); i++) {
-const UCTObject* object = *i;
-pt = ((double) object->et()) * caloScaleFactor * boostedJetPtFactor;
-eta = g.getUCTTowerEta(object->iEta());
-phi = g.getUCTTowerPhi(object->iPhi());
+//float min=100;
+float genH_pt = -100;
+float min_Pt = 1000;
+float dR_matched=-100;
 
+std::list<UCTObject*> boostedJetObjs = summaryCard->getBoostedJetObjs();
 edm::Handle<reco::GenParticleCollection> genParticles;
 if(evt.getByToken(genSrc_, genParticles)){
-//Begin Getting Gen Particles
- for (reco::GenParticleCollection::const_iterator genparticle = genParticles->begin(); genparticle != genParticles->end(); genparticle++){
- if   (genparticle->pdgId()!=25) continue;
+    // loop over gen particle and select only Higgs boson
+for (reco::GenParticleCollection::const_iterator genparticle = genParticles->begin(); genparticle != genParticles->end(); genparticle++){
+    if   (genparticle->pdgId()!=25) continue;
+    genH_pt=genparticle->pt();
+    Hist_pt_higgs->Fill(genH_pt);
 
-float min=100;
-float  DeltaR = deltaR(eta,phi ,genparticle->eta(), genparticle->phi());
- if  (DeltaR<min) min=DeltaR;
- if ( min==DeltaR && genparticle->pt() / pt >0.5  &&   genparticle->pt() / pt <2.0 ){
- eta_matched=eta;
- phi_matched=phi;
- pt_matched=pt;
-break;
- }
+    for(std::list<UCTObject*>::const_iterator i = boostedJetObjs.begin(); i != boostedJetObjs.end(); i++) {
+    const UCTObject* object = *i;
+    pt = ((double) object->et()) * caloScaleFactor * boostedJetPtFactor;
+    eta = g.getUCTTowerEta(object->iEta());
+    phi = g.getUCTTowerPhi(object->iPhi());
+    boostedJetpt->Fill(pt);
 
-                  }
-             }
-       }
+    float  DeltaR = deltaR(eta,phi ,genparticle->eta(), genparticle->phi());
+    if (DeltaR > 1.0) continue;
+    if (fabs(pt - genH_pt)< min_Pt){
+    min_Pt= fabs(pt - genH_pt);
+    eta_matched=eta;
+    phi_matched=phi;
+    pt_matched=pt;
+    dR_matched=DeltaR;
+//  cout<<"min_Pt = " <<min_Pt <<"  L1Pt="<<pt <<"  genPt=" <<genH_pt<< "  DeltaR="<<DeltaR<< "  genparticle->status="<<genparticle->status() << "\n";
+            }
+        }
+     break;
+//                cout<<"genparticle->pdgId() = " <<genparticle->pdgId() <<"  genparticle->status()="<<genparticle->status() << "  genparticle->pt()=" <<genparticle->pt()<<"  genparticle->eta()=" <<genparticle->eta()<< "  genparticle->phi()=" <<genparticle->phi()<< "\n";
+    }
+}
 
+
+
+//Hist_pt_higgs->Fill(genH_pt);
 Hist_pt->Fill(pt_matched);
 Hist_eta->Fill(eta_matched);
 Hist_phi->Fill(phi_matched);
+Hist_dR->Fill(dR_matched);
+Hist_pt_res->Fill((pt_matched-genH_pt)/genH_pt);
 
 //std::list<UCTObject*> boostedJetObjs = summaryCard->getBoostedJetObjs();
 for(std::list<UCTObject*>::const_iterator i = boostedJetObjs.begin(); i != boostedJetObjs.end(); i++) {
@@ -499,116 +523,60 @@ eta = g.getUCTTowerEta(object->iEta());
 phi = g.getUCTTowerPhi(object->iPhi());
 
 
-if (  pt == pt_matched &&  eta ==eta_matched &&  phi == phi_matched) {
+    if (  pt == pt_matched &&  eta ==eta_matched &&  phi == phi_matched) {
+    // loop over all 9 regions and check how many regions pass TauVeto
+        int TauVetoIndex=0;
+        int TauVetoIndexEt25=0;
+        int TauVetoIndexEt50=0;
+        int TauVetoIndexEt100=0;
+        for(uint32_t iEta = 0; iEta < 3; iEta++){
+            for(uint32_t iPhi = 0; iPhi < 3; iPhi++){
+if (object->boostedJetRegionTauVeto()[3*iEta+iPhi] == 1 ) TauVetoIndex++;
+if ( (object->et() * caloScaleFactor * boostedJetPtFactor) > 25 && object->boostedJetRegionTauVeto()[3*iEta+iPhi] == 1 ) TauVetoIndexEt25++;
+if ( (object->et() * caloScaleFactor * boostedJetPtFactor) > 50 && object->boostedJetRegionTauVeto()[3*iEta+iPhi] == 1 ) TauVetoIndexEt50++;
+if ( (object->et() * caloScaleFactor * boostedJetPtFactor) > 100 && object->boostedJetRegionTauVeto()[3*iEta+iPhi] == 1 ) TauVetoIndexEt100++;
+            }
+        }
+std::cout<<"caloScaleFactor * boostedJetPtFactor "<<caloScaleFactor <<"   " <<boostedJetPtFactor<<"\n";
+Hist_tauVeto->Fill(TauVetoIndex);
+Hist_tauVetoEt25->Fill(TauVetoIndexEt25);
+Hist_tauVetoEt50->Fill(TauVetoIndexEt50);
+Hist_tauVetoEt100->Fill(TauVetoIndexEt100);
 
 bitset<3> activeRegionEtaPattern = 0;
-      for(uint32_t iEta = 0; iEta < 3; iEta++){
-        bool activeStrip = false;
-        for(uint32_t iPhi = 0; iPhi < 3; iPhi++){
-          if(object->boostedJetRegionET()[3*iEta+iPhi] > 30 && object->boostedJetRegionET()[3*iEta+iPhi] > object->et()*0.0625  && object->boostedJetRegionTauVeto()[3*iEta+iPhi] ==0) activeStrip = true;
+for(uint32_t iEta = 0; iEta < 3; iEta++){
+bool activeStrip = false;
+for(uint32_t iPhi = 0; iPhi < 3; iPhi++){
+if(object->boostedJetRegionET()[3*iEta+iPhi] > 30 && object->boostedJetRegionET()[3*iEta+iPhi] > object->et()*0.0625  && object->boostedJetRegionTauVeto()[3*iEta+iPhi] ==0) activeStrip = true;
 
-      }
-        if(activeStrip) activeRegionEtaPattern |= (0x1 << iEta);
-      }
+            }
+            if(activeStrip) activeRegionEtaPattern |= (0x1 << iEta);
+        }
 
 bitset<3> activeRegionPhiPattern = 0;
-      for(uint32_t iPhi = 0; iPhi < 3; iPhi++){
-        bool activeStrip = false;
-        for(uint32_t iEta = 0; iEta < 3; iEta++){
-          if (object->boostedJetRegionET()[3*iEta+iPhi] > 30 && object->boostedJetRegionET()[3*iEta+iPhi] > object->et()*0.0625  && object->boostedJetRegionTauVeto()[3*iEta+iPhi]==0 ) activeStrip = true;
+for(uint32_t iPhi = 0; iPhi < 3; iPhi++){
+bool activeStrip = false;
+
+for(uint32_t iEta = 0; iEta < 3; iEta++){
+  if (object->boostedJetRegionET()[3*iEta+iPhi] > 30 && object->boostedJetRegionET()[3*iEta+iPhi] > object->et()*0.0625  && object->boostedJetRegionTauVeto()[3*iEta+iPhi]==0 ) activeStrip = true;
+            }
+  if(activeStrip) activeRegionPhiPattern |= (0x1 << iPhi);
         }
-        if(activeStrip) activeRegionPhiPattern |= (0x1 << iPhi);
-      }
 
-      string regionEta1 = activeRegionEtaPattern.to_string<char,std::string::traits_type,std::string::allocator_type>();
-      string regionPhi1 = activeRegionPhiPattern.to_string<char,std::string::traits_type,std::string::allocator_type>();
+string regionEta1 = activeRegionEtaPattern.to_string<char,std::string::traits_type,std::string::allocator_type>();
+string regionPhi1 = activeRegionPhiPattern.to_string<char,std::string::traits_type,std::string::allocator_type>();
 
-      regionEta.push_back(activeRegionEtaPattern.to_string<char,std::string::traits_type,std::string::allocator_type>());
-      regionPhi.push_back(activeRegionPhiPattern.to_string<char,std::string::traits_type,std::string::allocator_type>());
+regionEta.push_back(activeRegionEtaPattern.to_string<char,std::string::traits_type,std::string::allocator_type>());
+regionPhi.push_back(activeRegionPhiPattern.to_string<char,std::string::traits_type,std::string::allocator_type>());
 //cout<<"regionEta1="<<regionEta1<<endl;
 
-if ( (regionEta1=="100" && (regionPhi1 =="100" ||  regionPhi1== "001" || regionPhi1== "010" || regionPhi1== "110" )) ||
-   (regionEta1=="001" && (regionPhi1 =="100" ||  regionPhi1== "001" || regionPhi1== "010" || regionPhi1== "110" ) ) ||
-   (regionEta1=="010" && (regionPhi1 =="100" ||  regionPhi1== "001" || regionPhi1== "010" || regionPhi1== "110" ) )
-
-
-
-){
-
-     TauCands->push_back(L1JetParticle(math::PtEtaPhiMLorentzVector(pt, eta, phi, mass), L1JetParticle::kCentral));
-}
-/*
-if (regionEta1=="000" && regionPhi1 =="000")  nevent000++;
-if (regionEta1=="100" && regionPhi1 =="100")  nevent0++;
-if (regionEta1=="100" && regionPhi1 =="010")  nevent1++;
-if (regionEta1=="100" && regionPhi1 =="001")  nevent2++;
-if (regionEta1=="100" && regionPhi1 =="011")  nevent3++;
-if (regionEta1=="100" && regionPhi1 =="110")  nevent4++;
-if (regionEta1=="100" && regionPhi1 =="101")  nevent5++;
-if (regionEta1=="100" && regionPhi1 =="111")  nevent6++;
-
-if (regionEta1=="010" && regionPhi1 =="100")  nevent10++;
-if (regionEta1=="010" && regionPhi1 =="010")  nevent11++;
-if (regionEta1=="010" && regionPhi1 =="001")  nevent12++;
-if (regionEta1=="010" && regionPhi1 =="011")  nevent13++;
-if (regionEta1=="010" && regionPhi1 =="110")  nevent14++;
-if (regionEta1=="010" && regionPhi1 =="101")  nevent15++;
-if (regionEta1=="010" && regionPhi1 =="111")  nevent16++;
-
-if (regionEta1=="001" && regionPhi1 =="100")  nevent20++;
-if (regionEta1=="001" && regionPhi1 =="010")  nevent21++;
-if (regionEta1=="001" && regionPhi1 =="001")  nevent22++;
-if (regionEta1=="001" && regionPhi1 =="011")  nevent23++;
-if (regionEta1=="001" && regionPhi1 =="110")  nevent24++;
-if (regionEta1=="001" && regionPhi1 =="101")  nevent25++;
-if (regionEta1=="001" && regionPhi1 =="111")  nevent26++;
-
-if (regionEta1=="011" && regionPhi1 =="100")  nevent30++;
-if (regionEta1=="011" && regionPhi1 =="010")  nevent31++;
-if (regionEta1=="011" && regionPhi1 =="001")  nevent32++;
-if (regionEta1=="011" && regionPhi1 =="011")  nevent33++;
-if (regionEta1=="011" && regionPhi1 =="110")  nevent34++;
-if (regionEta1=="011" && regionPhi1 =="101")  nevent35++;
-if (regionEta1=="011" && regionPhi1 =="111")  nevent36++;
-
-if (regionEta1=="110" && regionPhi1 =="100")  nevent40++;
-if (regionEta1=="110" && regionPhi1 =="010")  nevent41++;
-if (regionEta1=="110" && regionPhi1 =="001")  nevent42++;
-if (regionEta1=="110" && regionPhi1 =="011")  nevent43++;
-if (regionEta1=="110" && regionPhi1 =="110")  nevent44++;
-if (regionEta1=="110" && regionPhi1 =="101")  nevent45++;
-if (regionEta1=="110" && regionPhi1 =="111")  nevent46++;
-
-if (regionEta1=="101" && regionPhi1 =="100")  nevent50++;
-if (regionEta1=="101" && regionPhi1 =="010")  nevent51++;
-if (regionEta1=="101" && regionPhi1 =="001")  nevent52++;
-if (regionEta1=="101" && regionPhi1 =="011")  nevent53++;
-if (regionEta1=="101" && regionPhi1 =="110")  nevent54++;
-if (regionEta1=="101" && regionPhi1 =="101")  nevent55++;
-if (regionEta1=="101" && regionPhi1 =="111")  nevent56++;
-
-
-if (regionEta1=="111" && regionPhi1 =="100")  nevent60++;
-if (regionEta1=="111" && regionPhi1 =="010")  nevent61++;
-if (regionEta1=="111" && regionPhi1 =="001")  nevent62++;
-if (regionEta1=="111" && regionPhi1 =="011")  nevent63++;
-if (regionEta1=="111" && regionPhi1 =="110")  nevent64++;
-if (regionEta1=="111" && regionPhi1 =="101")  nevent65++;
-if (regionEta1=="111" && regionPhi1 =="111")  nevent66++;
-*/
-
-// loop over all 9 regions and check how many regions pass TauVeto
-int TauVetoIndex=0;
- for(uint32_t iEta = 0; iEta < 3; iEta++){
- for(uint32_t iPhi = 0; iPhi < 3; iPhi++){
- if (object->boostedJetRegionTauVeto()[3*iEta+iPhi] == 1 ) TauVetoIndex++;
-           }
-                    }
-
- Hist_tauVeto->Fill(TauVetoIndex);
-
-
-   }
+        if ( (regionEta1=="100" && (regionPhi1 =="100" ||  regionPhi1== "001" || regionPhi1== "010" || regionPhi1== "110" )) ||
+            (regionEta1=="001" && (regionPhi1 =="100" ||  regionPhi1== "001" || regionPhi1== "010" || regionPhi1== "110" ) ) ||
+            (regionEta1=="010" && (regionPhi1 =="100" ||  regionPhi1== "001" || regionPhi1== "010" || regionPhi1== "110" ) )
+        ){
+            TauCands->push_back(L1JetParticle(math::PtEtaPhiMLorentzVector(pt, eta, phi, mass), L1JetParticle::kCentral));
+        }
+    }
 }
 
 /*cout<<"nevent000= "<<nevent000<<endl;
@@ -832,7 +800,8 @@ nevent60+nevent61+nevent62+nevent63+nevent64+nevent65+nevent66<<endl;
     }
   }
   else
-    cout<<"Error getting calo jets"<<endl;
+    int uu=0;
+//    cout<<"Error getting calo jets"<<endl;
 
   Handle<vector<pat::Jet> > jetsAK8;
 
@@ -934,7 +903,7 @@ nevent60+nevent61+nevent62+nevent63+nevent64+nevent65+nevent66<<endl;
 
   }
 
-  edm::Handle<reco::GenParticleCollection> genParticles;
+//  edm::Handle<reco::GenParticleCollection> genParticles;
   if(evt.getByToken(genSrc_, genParticles)){//Begin Getting Gen Particles
     for (reco::GenParticleCollection::const_iterator genparticle = genParticles->begin(); genparticle != genParticles->end(); genparticle++){
       double DR = reco::deltaR(recoEta_1, recoPhi_1, genparticle->eta(), genparticle->phi());
